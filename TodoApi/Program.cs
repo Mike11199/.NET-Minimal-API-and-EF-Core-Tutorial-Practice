@@ -18,6 +18,11 @@ todoItems.MapDelete("/{id}", DeleteTodo);
 
 app.Run();
 
+
+// IResult is an interface in the Microsoft.AspNetCore.Http namespace. It represents the result of an HTTP operation in an ASP.NET Core web application.
+// Note that the IResult interface is not used for asynchronous operations by default.
+// In asynchronous scenarios, you may need to use the Task<IResult> type to represent an asynchronous operation that will eventually produce an IResult.
+
 static async Task<IResult> GetAllTodos(TodoDb db)
 {
     return TypedResults.Ok(await db.Todos.Select(x => new TodoItemDTO(x)).ToArrayAsync());
