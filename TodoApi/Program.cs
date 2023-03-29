@@ -1,11 +1,56 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TodoApi;
 
 
+
+// ******************************************************************blogging database**************************
+using var db = new BloggingContext();
+
+
+// Note: This sample requires the database to be created before running.
+Console.WriteLine($"Database path: {db.DbPath}.");
+
+// Create
+Console.WriteLine("Inserting a new blog");
+db.Add(new Blog { Url = "http://blogs.msdn.com/adonet" });
+db.SaveChanges();
+
+
+// Read
+Console.WriteLine("Querying for a blog");
+var blog = db.Blogs
+    .OrderBy(b => b.BlogId)
+    .First();
+
+// Update
+Console.WriteLine("Updating the blog and adding a post");
+blog.Url = "https://devblogs.microsoft.com/dotnet";
+blog.Posts.Add(
+    new Post { Title = "Hello World", Content = "I wrote an app using EF Core!" });
+db.SaveChanges();
+
+// Delete
+Console.WriteLine("Delete the blog");
+//db.Remove(blog);
+db.SaveChanges();
+
+//*******************************************************************************************************
+
+
+
+
+//***************************Blogging application endpionts*********************************************
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDbContext<TodoDb>(opt => opt.UseInMemoryDatabase("TodoList"));
+builder.Services.AddDbContext<BloggingContext>();
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 var app = builder.Build();
+
+
+//RouteGroupBuilder blogs = app.MapGroup("/blogs");
+app.MapGet("/", GetAllBlogs);
+app.MapGet("/posts", GetAllPosts);
+
 
 RouteGroupBuilder todoItems = app.MapGroup("/todoitems");
 
@@ -18,60 +63,65 @@ todoItems.MapDelete("/{id}", DeleteTodo);
 
 app.Run();
 
-
-// IResult is an interface in the Microsoft.AspNetCore.Http namespace. It represents the result of an HTTP operation in an ASP.NET Core web application.
-// Note that the IResult interface is not used for asynchronous operations by default.
-// In asynchronous scenarios, you may need to use the Task<IResult> type to represent an asynchronous operation that will eventually produce an IResult.
-
-static async Task<IResult> GetAllTodos(TodoDb db)
+static async Task<IResult> GetAllBlogs(BloggingContext db)
 {
-    return TypedResults.Ok(await db.Todos.Select(x => new TodoItemDTO(x)).ToArrayAsync());
+
+    return TypedResults.Ok(await db.Blogs.ToListAsync());
 }
 
-static async Task<IResult> GetCompleteTodos(TodoDb db)
+
+//BELOW CAUSES CIRCULAR ERROR
+static async Task<IResult> GetAllPosts(BloggingContext db)
 {
-    return TypedResults.Ok(await db.Todos.Where(t => t.IsComplete).Select(x => new TodoItemDTO(x)).ToListAsync());
+    // Load all posts from the database including their associated blog
+    var posts = await db.Posts.Include(p => p.Blog).ToListAsync();
+
+    // Return the serialized posts as the result of the method
+    return TypedResults.Ok(posts);
 }
 
-static async Task<IResult> GetTodo(int id, TodoDb db)
+
+static async Task<IResult> GetAllTodos(BloggingContext db)
+{
+    return TypedResults.Ok(await db.Todos.ToArrayAsync());
+}
+
+static async Task<IResult> GetCompleteTodos(BloggingContext db)
+{
+    return TypedResults.Ok(await db.Todos.Where(t => t.IsComplete).ToListAsync());
+}
+
+static async Task<IResult> GetTodo(int id, BloggingContext db)
 {
     return await db.Todos.FindAsync(id)
         is Todo todo
-            ? TypedResults.Ok(new TodoItemDTO(todo))
+            ? TypedResults.Ok(todo)
             : TypedResults.NotFound();
 }
 
-static async Task<IResult> CreateTodo(TodoItemDTO todoItemDTO, TodoDb db)
+static async Task<IResult> CreateTodo(Todo todo, BloggingContext db)
 {
-    var todoItem = new Todo
-    {
-        IsComplete = todoItemDTO.IsComplete,
-        Name = todoItemDTO.Name
-    };
-
-    db.Todos.Add(todoItem);
+    db.Todos.Add(todo);
     await db.SaveChangesAsync();
 
-    todoItemDTO = new TodoItemDTO(todoItem);
-
-    return TypedResults.Created($"/todoitems/{todoItem.Id}", todoItemDTO);
+    return TypedResults.Created($"/todoitems/{todo.Id}", todo);
 }
 
-static async Task<IResult> UpdateTodo(int id, TodoItemDTO todoItemDTO, TodoDb db)
+static async Task<IResult> UpdateTodo(int id, Todo inputTodo, BloggingContext db)
 {
     var todo = await db.Todos.FindAsync(id);
 
     if (todo is null) return TypedResults.NotFound();
 
-    todo.Name = todoItemDTO.Name;
-    todo.IsComplete = todoItemDTO.IsComplete;
+    todo.Name = inputTodo.Name;
+    todo.IsComplete = inputTodo.IsComplete;
 
     await db.SaveChangesAsync();
 
     return TypedResults.NoContent();
 }
 
-static async Task<IResult> DeleteTodo(int id, TodoDb db)
+static async Task<IResult> DeleteTodo(int id, BloggingContext db)
 {
     if (await db.Todos.FindAsync(id) is Todo todo)
     {
